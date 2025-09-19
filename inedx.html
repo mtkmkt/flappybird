@@ -30,9 +30,8 @@
   </div>
 
   <script>
-    // ----- Basic Flappy Bird clone (single HTML file) -----
+    // ----- Flappy Bird clone (single HTML file) -----
     // Controls: Spacebar, click/tap on canvas, or Start button.
-    // This is intentionally short and beginner-friendly.
 
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
@@ -51,24 +50,25 @@
     let pipeWidth = 60;
     let spawnInterval = 110; // frames
     let score = 0;
+    let best = Number(localStorage.getItem('flappy_best') || 0);
     let muted = false;
 
     // Simple sounds (using WebAudio) - optional
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const audioCtx = AudioCtx ? new AudioCtx() : null;
-    function playBeep(freq, time=0.06){
+    function playBeep(freq, time=0.06, vol=0.02){
       if(muted || !audioCtx) return;
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       o.type = 'sine';
       o.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      g.gain.setValueAtTime(0.02, audioCtx.currentTime);
+      g.gain.setValueAtTime(vol, audioCtx.currentTime);
       o.connect(g); g.connect(audioCtx.destination);
       o.start();
       o.stop(audioCtx.currentTime + time);
     }
 
-    // Bird object
+    // Bird object with simple wing animation
     const bird = {
       x: 90,
       y: H/2,
@@ -77,23 +77,35 @@
       vel: 0,
       rot: 0,
       flapPower: -9,
-      reset(){ this.y = H/2; this.vel = 0; this.rot = 0 },
-      flap(){ this.vel = this.flapPower; playBeep(880,0.03) },
+      wingTimer: 0,
+      reset(){ this.y = H/2; this.vel = 0; this.rot = 0; this.wingTimer = 0 },
+      flap(){ this.vel = this.flapPower; this.wingTimer = 6; playBeep(880,0.03) },
       update(){
         this.vel += gravity;
         this.y += this.vel;
         // rotation for simple effect
-        this.rot = Math.max(-0.6, Math.min(1.2, this.vel/10));
+        this.rot = Math.max(-0.9, Math.min(1.4, this.vel/10));
+        if(this.wingTimer>0) this.wingTimer--;
       },
       draw(){
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rot);
         // simple body
-        ctx.fillStyle = '#FFDD57';n
+        ctx.fillStyle = '#FFDD57';
         ctx.beginPath();
         ctx.ellipse(0,0,this.w/2,this.h/2,0,0,Math.PI*2);
         ctx.fill();
+        // wing (animated)
+        ctx.save();
+        const wingOffset = this.wingTimer>0 ? -6 : -2;
+        ctx.translate(-2, 4);
+        ctx.rotate(wingOffset * Math.PI/180);
+        ctx.beginPath();
+        ctx.ellipse(-6,0,10,5,0,0,Math.PI*2);
+        ctx.fillStyle = '#e6b800';
+        ctx.fill();
+        ctx.restore();
         // eye
         ctx.fillStyle='#111';
         ctx.beginPath();
@@ -113,7 +125,7 @@
         this.top = top; // top pipe height
         this.w = pipeWidth;
         this.passed = false;
-        this.speed = 2.4;
+        this.speed = 2.4 + Math.min(1.6, Math.floor(frames/1000)*0.1); // slight speed-up over time
       }
       update(){ this.x -= this.speed }
       draw(){
@@ -130,23 +142,23 @@
     }
 
     function resetGame(){
-      frames = 0; pipes = []; score = 0; bird.reset(); gameState = 'menu'; scoreEl.textContent = 'Score: 0';
+      frames = 0; pipes = []; score = 0; bird.reset(); gameState = 'menu'; scoreEl.textContent = 'Score: 0 (Best: ' + best + ')';
     }
 
     function startGame(){
-      pipes = []; frames = 0; score = 0; bird.reset(); gameState = 'playing'; scoreEl.textContent = 'Score: 0';
+      pipes = []; frames = 0; score = 0; bird.reset(); gameState = 'playing'; scoreEl.textContent = 'Score: 0 (Best: ' + best + ')';
       if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }
 
     function gameOver(){
-      gameState = 'over'; playBeep(120,0.2);
+      gameState = 'over'; playBeep(120,0.2); if(score>best){ best = score; localStorage.setItem('flappy_best', String(best)); }
     }
 
     // Input handlers
     function flap(){
       if(gameState === 'menu') startGame();
-      if(gameState === 'over') resetGame();
-      bird.flap();
+      else if(gameState === 'over') resetGame();
+      if(gameState === 'playing') bird.flap();
     }
 
     // mouse/touch
@@ -173,7 +185,7 @@
           const p = pipes[i];
           p.update();
           // check for score (bird passes pipe)
-          if(!p.passed && p.x + p.w < bird.x - bird.w/2){ p.passed = true; score++; scoreEl.textContent = 'Score: ' + score; playBeep(600,0.03) }
+          if(!p.passed && p.x + p.w < bird.x - bird.w/2){ p.passed = true; score++; scoreEl.textContent = 'Score: ' + score + ' (Best: ' + best + ')'; playBeep(600,0.03) }
           // remove offscreen
           if(p.x + p.w < -20) pipes.splice(i,1);
           // collision with bird
@@ -194,6 +206,12 @@
     function draw(){
       // sky background
       ctx.clearRect(0,0,W,H);
+
+      // parallax clouds (simple)
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      const cloudX = (frames*0.2) % (W+120) - 60;
+      ctx.beginPath(); ctx.ellipse(cloudX,80,60,24,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cloudX+80,100,40,18,0,0,Math.PI*2); ctx.fill();
 
       // simple ground
       ctx.fillStyle = '#8B5A2B';
@@ -219,6 +237,8 @@
         ctx.fillText('Flappy — Click/Space to flap', W/2, 170);
         ctx.font = '16px system-ui';
         ctx.fillText('Press Start or tap to begin', W/2, 210);
+        ctx.font = '14px system-ui';
+        ctx.fillText('Best: ' + best, W/2, 250);
         ctx.textAlign = 'left';
       }
 
@@ -231,14 +251,14 @@
         ctx.fillText('Game Over', W/2, 190);
         ctx.font = '16px system-ui';
         ctx.fillText('Score: ' + score, W/2, 230);
-        ctx.fillText('Click Start to play again', W/2, 265);
+        ctx.fillText('Best: ' + best, W/2, 255);
+        ctx.fillText('Click Start to play again', W/2, 285);
         ctx.textAlign = 'left';
       }
     }
 
     function loop(){ update(); draw(); requestAnimationFrame(loop); }
 
-    // small fix: remove stray char in code earlier
     // start the main loop
     resetGame(); loop();
 
