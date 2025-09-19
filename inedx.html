@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flappy Bird — Simple Clone</title>
+  <style>
+    /* Simple reset */
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{display:flex;align-items:center;justify-content:center;background:linear-gradient(#87CEEB,#cfefff);font-family:system-ui,Segoe UI,Roboto,Arial}
+    .wrap{width:420px}
+    canvas{display:block;width:100%;height:auto;border:6px solid #333;border-radius:8px;background:#70c5ce}
+    .info{margin-top:12px;text-align:center}
+    .btn{display:inline-block;padding:8px 12px;margin:4px;border-radius:6px;background:#333;color:#fff;text-decoration:none;cursor:pointer}
+    .small{font-size:14px;color:#222}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="420" height="580"></canvas>
+    <div class="info">
+      <div id="score" class="small">Score: 0</div>
+      <div style="margin-top:6px">
+        <button id="startBtn" class="btn">Start / Restart</button>
+        <button id="muteBtn" class="btn">Mute</button>
+      </div>
+      <div class="small" style="margin-top:8px;color:#111">Space / Click / Tap to flap</div>
+    </div>
+  </div>
+
+  <script>
+    // ----- Basic Flappy Bird clone (single HTML file) -----
+    // Controls: Spacebar, click/tap on canvas, or Start button.
+    // This is intentionally short and beginner-friendly.
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const startBtn = document.getElementById('startBtn');
+    const muteBtn = document.getElementById('muteBtn');
+
+    const W = canvas.width; // 420
+    const H = canvas.height; // 580
+
+    let frames = 0;
+    let gameState = 'menu'; // 'menu', 'playing', 'over'
+    let pipes = [];
+    let gravity = 0.55;
+    let pipeGap = 140;
+    let pipeWidth = 60;
+    let spawnInterval = 110; // frames
+    let score = 0;
+    let muted = false;
+
+    // Simple sounds (using WebAudio) - optional
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = AudioCtx ? new AudioCtx() : null;
+    function playBeep(freq, time=0.06){
+      if(muted || !audioCtx) return;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.02, audioCtx.currentTime);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + time);
+    }
+
+    // Bird object
+    const bird = {
+      x: 90,
+      y: H/2,
+      w: 34,
+      h: 24,
+      vel: 0,
+      rot: 0,
+      flapPower: -9,
+      reset(){ this.y = H/2; this.vel = 0; this.rot = 0 },
+      flap(){ this.vel = this.flapPower; playBeep(880,0.03) },
+      update(){
+        this.vel += gravity;
+        this.y += this.vel;
+        // rotation for simple effect
+        this.rot = Math.max(-0.6, Math.min(1.2, this.vel/10));
+      },
+      draw(){
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rot);
+        // simple body
+        ctx.fillStyle = '#FFDD57';n
+        ctx.beginPath();
+        ctx.ellipse(0,0,this.w/2,this.h/2,0,0,Math.PI*2);
+        ctx.fill();
+        // eye
+        ctx.fillStyle='#111';
+        ctx.beginPath();
+        ctx.arc(6,-3,3,0,Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }
+    };
+
+    // Pipe class
+    class Pipe{
+      constructor(){
+        this.x = W + 10;
+        // random gap center
+        const margin = 60;
+        const top = Math.floor(Math.random() * (H - pipeGap - margin*2)) + margin;
+        this.top = top; // top pipe height
+        this.w = pipeWidth;
+        this.passed = false;
+        this.speed = 2.4;
+      }
+      update(){ this.x -= this.speed }
+      draw(){
+        ctx.fillStyle = '#229954';
+        // top pipe
+        ctx.fillRect(this.x, 0, this.w, this.top);
+        // bottom pipe
+        ctx.fillRect(this.x, this.top + pipeGap, this.w, H - (this.top + pipeGap));
+        // pipe caps for style
+        ctx.fillStyle = '#1b5e35';
+        ctx.fillRect(this.x - 4, this.top - 8, this.w + 8, 8);
+        ctx.fillRect(this.x - 4, this.top + pipeGap, this.w + 8, 8);
+      }
+    }
+
+    function resetGame(){
+      frames = 0; pipes = []; score = 0; bird.reset(); gameState = 'menu'; scoreEl.textContent = 'Score: 0';
+    }
+
+    function startGame(){
+      pipes = []; frames = 0; score = 0; bird.reset(); gameState = 'playing'; scoreEl.textContent = 'Score: 0';
+      if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function gameOver(){
+      gameState = 'over'; playBeep(120,0.2);
+    }
+
+    // Input handlers
+    function flap(){
+      if(gameState === 'menu') startGame();
+      if(gameState === 'over') resetGame();
+      bird.flap();
+    }
+
+    // mouse/touch
+    canvas.addEventListener('mousedown', e => { flap(); });
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); flap(); }, {passive:false});
+    // keyboard
+    window.addEventListener('keydown', e => { if(e.code === 'Space') { e.preventDefault(); flap(); } });
+
+    startBtn.addEventListener('click', ()=>{ if(gameState==='playing') resetGame(); else startGame(); });
+    muteBtn.addEventListener('click', ()=>{ muted = !muted; muteBtn.textContent = muted ? 'Unmute' : 'Mute' });
+
+    // collision detection
+    function rectsCollide(ax,ay,aw,ah, bx,by,bw,bh){
+      return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+    }
+
+    function update(){
+      frames++;
+      if(gameState === 'playing'){
+        // spawn pipes
+        if(frames % spawnInterval === 0){ pipes.push(new Pipe()); }
+        // update pipes
+        for(let i=pipes.length-1;i>=0;i--){
+          const p = pipes[i];
+          p.update();
+          // check for score (bird passes pipe)
+          if(!p.passed && p.x + p.w < bird.x - bird.w/2){ p.passed = true; score++; scoreEl.textContent = 'Score: ' + score; playBeep(600,0.03) }
+          // remove offscreen
+          if(p.x + p.w < -20) pipes.splice(i,1);
+          // collision with bird
+          // top pipe rect
+          if(rectsCollide(bird.x - bird.w/2, bird.y - bird.h/2, bird.w, bird.h, p.x, 0, p.w, p.top)) gameOver();
+          // bottom pipe rect
+          if(rectsCollide(bird.x - bird.w/2, bird.y - bird.h/2, bird.w, bird.h, p.x, p.top + pipeGap, p.w, H - (p.top + pipeGap))) gameOver();
+        }
+
+        bird.update();
+        // hit the ground
+        if(bird.y + bird.h/2 >= H - 6){ bird.y = H - bird.h/2 - 6; gameOver(); }
+        // hit the ceiling
+        if(bird.y - bird.h/2 <= 0){ bird.y = bird.h/2; bird.vel = 0 }
+      }
+    }
+
+    function draw(){
+      // sky background
+      ctx.clearRect(0,0,W,H);
+
+      // simple ground
+      ctx.fillStyle = '#8B5A2B';
+      ctx.fillRect(0,H-40,W,40);
+      ctx.fillStyle = '#6b3f1b';
+      ctx.fillRect(0,H-40,W,8);
+
+      // pipes
+      for(const p of pipes) p.draw();
+
+      // bird
+      bird.draw();
+
+      // HUD and messages
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px system-ui';
+      if(gameState === 'menu'){
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(30,120,W-60,160);
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.font = '24px system-ui';
+        ctx.fillText('Flappy — Click/Space to flap', W/2, 170);
+        ctx.font = '16px system-ui';
+        ctx.fillText('Press Start or tap to begin', W/2, 210);
+        ctx.textAlign = 'left';
+      }
+
+      if(gameState === 'over'){
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(40,140,W-80,140);
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.font = '28px system-ui';
+        ctx.fillText('Game Over', W/2, 190);
+        ctx.font = '16px system-ui';
+        ctx.fillText('Score: ' + score, W/2, 230);
+        ctx.fillText('Click Start to play again', W/2, 265);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    function loop(){ update(); draw(); requestAnimationFrame(loop); }
+
+    // small fix: remove stray char in code earlier
+    // start the main loop
+    resetGame(); loop();
+
+  </script>
+</body>
+</html>
